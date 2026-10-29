@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+<title id="title">Dockyard — Offline deployment kit</title><desc id="desc">Bundle a Docker application with its images, verify checksums, and install it on a computer with no internet. By OBEOS.</desc>
+<defs><pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity=".035"/></pattern></defs>
+<rect width="1200" height="400" rx="18" fill="#0c1220"/><rect width="1200" height="400" rx="18" fill="url(#grid)"/>
+<path d="M48 40h42" stroke="#3ddc97" stroke-width="5"/>
+<text x="106" y="46" fill="#c5cddb" font-family="Arial, sans-serif" font-size="16" letter-spacing="3">BY OBEOS</text>
+<text x="48" y="114" fill="#3ddc97" font-family="Arial, sans-serif" font-size="16" letter-spacing="3">DEPLOYMENT / 03</text>
+<text x="45" y="194" fill="#f3f5fa" font-family="Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="-2">Dockyard</text>
+<text x="48" y="247" fill="#e0e6ef" font-family="Arial, sans-serif" font-size="25">Offline deployment kit</text>
+<text x="48" y="285" fill="#99a7bc" font-family="Arial, sans-serif" font-size="21">Pack it here. Verify it. Install it where there is no internet.</text>
+<path d="M48 331h1104" stroke="#283345"/>
+<text x="48" y="366" fill="#99a7bc" font-family="Arial, sans-serif" font-size="15" letter-spacing="2">LOCAL SYSTEMS. CLEAR PURPOSE.</text>
+<text x="1106" y="366" fill="#3ddc97" font-family="Arial, sans-serif" font-size="17" font-weight="700">5K</text>
+<g transform="translate(895 70)" fill="none" stroke="#3ddc97" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="70" width="200" height="110" rx="10"/><path d="M60 70v110M100 70v110M140 70v110M180 70v110"/><path d="M120 10v44M98 32l22 22 22-22"/><path d="M0 214h240"/><path d="M20 214v22M220 214v22"/></g>
+</svg>
