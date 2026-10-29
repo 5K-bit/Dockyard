@@ -1,0 +1,73 @@
+# SOURCE_DATE_EPOCH is not set here; digests differ on every run
+$ docker build -q -t dockyard-demo/api:1.0 <work>/build
+sha256:7a02a797a7c6023863a03faf75d44f87e70e8b7d5d6db3b85dc017b4965f8b46
+[exit 0]
+$ python3 -m dockyard pack --out <work>/dist
+saving dockyard-demo/api:1.0
+writing archive
+Bundle: <work>/dist/demo-1.0.0.dockyard (4.6 MB)
+SHA-256: 1336bea467d8dc7992b7a89489f0735f3eaa1d16ec118a69fc5757509b24a018
+demo 1.0.0: 1 image(s), 2 health check(s)
+Give the SHA-256 to the person installing, by a different route than the file.
+[exit 0]
+$ python3 -m dockyard verify <work>/dist/demo-1.0.0.dockyard
+demo 1.0.0, packed 2026-10-29T21:48:48Z by dockyard 0.1.0
+  image dockyard-demo/api:1.0  linux/amd64  8.2 MB
+  health api (http)
+  health api-container (container)
+checksums OK: 5 files
+archive SHA-256 1336bea467d8dc7992b7a89489f0735f3eaa1d16ec118a69fc5757509b24a018 (matches the .sha256 file next to it)
+verification: OK
+[exit 0]
+# --- the other machine: no image, no containers, no Dockyard ---
+$ docker rmi -f dockyard-demo/api:1.0
+Untagged: dockyard-demo/api:1.0
+Deleted: sha256:7a02a797a7c6023863a03faf75d44f87e70e8b7d5d6db3b85dc017b4965f8b46
+[exit 0]
+$ <work>/clean-venv/bin/python -c import dockyard
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import dockyard
+ModuleNotFoundError: No module named 'dockyard'
+[exit 1]
+$ <work>/clean-venv/bin/python <work>/machine2/demo-1.0.0/dockyard.pyz verify <work>/machine2/demo-1.0.0
+demo 1.0.0, packed 2026-10-29T21:48:48Z by dockyard 0.1.0
+  image dockyard-demo/api:1.0  linux/amd64  8.2 MB
+  health api (http)
+  health api-container (container)
+checksums OK: 5 files
+verification: OK
+[exit 0]
+$ <work>/clean-venv/bin/python <work>/machine2/demo-1.0.0/dockyard.pyz install <work>/machine2/demo-1.0.0 --dir <work>/install
+verified demo 1.0.0 (5 files, 8.2 MB)
+loading dockyard-demo/api:1.0
+starting
+checking health
+  health api: http://127.0.0.1:18080/health: status 200 (0.0s)
+  health api-container: api: running (0.1s)
+demo 1.0.0 installed and running in <work>/install
+[exit 0]
+$ curl http://127.0.0.1:18080/
+dockyard demo app
+$ <work>/clean-venv/bin/python <work>/machine2/demo-1.0.0/dockyard.pyz status --dir <work>/install
+demo 1.0.0 (project demo), installed 2026-10-29T21:48:49Z
+  api              running    Up Less than a second
+  images: dockyard-demo/api:1.0
+[exit 0]
+$ <work>/clean-venv/bin/python <work>/machine2/demo-1.0.0/dockyard.pyz health --dir <work>/install
+ok   api: http://127.0.0.1:18080/health: status 200
+ok   api-container: api: running
+[exit 0]
+# --- a corrupted copy is refused before anything is loaded ---
+$ <work>/clean-venv/bin/python <work>/machine2/demo-1.0.0/dockyard.pyz uninstall --dir <work>/install --remove-images
+stopped; removed images: dockyard-demo/api:1.0
+[exit 0]
+$ python3 -m dockyard install <work>/dist/tampered.dockyard --dir <work>/install2
+dockyard: verification failed: checksum mismatch: images/dockyard-demo_api_1.0.tar
+[exit 2]
+$ docker images -q dockyard-demo/api:1.0
+[exit 0]
+# image present after refused install: no
+$ python3 -m dockyard verify <work>/dist/demo-1.0.0.dockyard --digest 0000000000000000000000000000000000000000000000000000000000000000
+dockyard: verification failed: archive digest 1336bea467d8dc7992b7a89489f0735f3eaa1d16ec118a69fc5757509b24a018 does not match the expected 0000000000000000000000000000000000000000000000000000000000000000
+[exit 2]
