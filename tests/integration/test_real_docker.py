@@ -70,8 +70,18 @@ def test_the_bundled_installer_installs_and_the_app_answers(transcript: str) -> 
 
 
 def test_a_corrupted_bundle_is_refused_and_loads_nothing(transcript: str) -> None:
-    assert "verification failed: checksum mismatch" in transcript
+    assert "tampered copy: one byte changed inside" in transcript
+    assert "verification failed: checksum mismatch: images/" in transcript
+    assert "bundle is missing" not in transcript
     assert "# image present after refused install: no" in transcript
+
+
+def test_the_archive_digest_is_checked_by_a_system_tool_before_it_is_unpacked(
+    transcript: str,
+) -> None:
+    check = transcript.index("sha256sum -c -")
+    assert ": OK" in transcript[check:]
+    assert check < transcript.index("python3 -c import dockyard")
 
 
 def test_a_wrong_expected_digest_is_refused(transcript: str) -> None:

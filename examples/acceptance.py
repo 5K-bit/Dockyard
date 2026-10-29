@@ -17,6 +17,9 @@ What it does, and what it proves:
 from __future__ import annotations
 
 import argparse
+import gzip
+import hashlib
+import io
 import os
 import shutil
 import subprocess
@@ -68,6 +71,57 @@ def build_demo_image(work: Path, log: list[str]) -> None:
         sh(["docker", "build", "-q", "-t", IMAGE, str(DEMO)], log)
 
 
+def system_sha256_check(archive: Path, digest: str, log: list[str]) -> None:
+    """Check the archive against its independently supplied digest with a system tool."""
+    line = f"{digest}  {archive.name}\n"
+    tool = (
+        ["sha256sum", "-c", "-"]
+        if shutil.which("sha256sum")
+        else ["shasum", "-a", "256", "-c", "-"]
+    )
+    log.append(f"$ echo '<digest>  {archive.name}' | {' '.join(tool)}")
+    done = subprocess.run(  # noqa: S603
+        tool, input=line, capture_output=True, text=True, cwd=archive.parent, check=False
+    )
+    log.append((done.stdout + done.stderr).strip())
+    if done.returncode != 0:
+        raise SystemExit("\n".join(log) + "\nthe archive does not match its digest")
+
+
+def tamper_payload(archive: Path, out: Path) -> str:
+    """Copy ``archive`` to ``out`` with one byte of an image payload changed.
+
+    The tar structure, member names, sizes and SHA256SUMS are untouched, so the only thing
+    wrong with the copy is that an image no longer matches its recorded checksum. Returns the
+    name of the altered member.
+    """
+    altered = ""
+    with tarfile.open(archive, "r:*") as src:
+        members = src.getmembers()
+        buf = io.BytesIO()
+        with (
+            gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz,
+            tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as dst,
+        ):
+            for member in members:
+                if not member.isfile():
+                    dst.addfile(member)
+                    continue
+                handle = src.extractfile(member)
+                if handle is None:
+                    raise SystemExit(f"cannot read {member.name} from {archive}")
+                data = handle.read()
+                if not altered and member.name.endswith(".tar") and "/images/" in member.name:
+                    middle = len(data) // 2
+                    data = data[:middle] + bytes([data[middle] ^ 0xFF]) + data[middle + 1 :]
+                    altered = member.name
+                dst.addfile(member, io.BytesIO(data))
+    if not altered:
+        raise SystemExit("no image payload found to tamper with")
+    out.write_bytes(buf.getvalue())
+    return altered
+
+
 def run_scenario() -> str:
     """Run the whole scenario against the local Docker daemon and return the transcript."""
     log: list[str] = []
@@ -82,6 +136,7 @@ def run_scenario() -> str:
         sh([*dockyard, "pack", "--out", str(work / "dist")], log, cwd=DEMO)
         archive = work / "dist" / "demo-1.0.0.dockyard"
         sh([*dockyard, "verify", str(archive)], log)
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
         log.append("# --- the other machine: no image, no containers, no Dockyard ---")
         subprocess.run(
@@ -90,6 +145,8 @@ def run_scenario() -> str:
         sh(["docker", "rmi", "-f", IMAGE], log)
         machine = work / "machine2"
         machine.mkdir()
+        # The digest is checked by a system tool before the archive is unpacked or run.
+        system_sha256_check(archive, digest, log)
         with tarfile.open(archive) as tar:
             tar.extractall(machine, filter="data")
         bundle_dir = machine / "demo-1.0.0"
@@ -108,11 +165,11 @@ def run_scenario() -> str:
 
         log.append("# --- a corrupted copy is refused before anything is loaded ---")
         sh([python, pyz, "uninstall", "--dir", str(target), "--remove-images"], log)
-        data = bytearray(archive.read_bytes())
-        data[len(data) // 2] ^= 0xFF
         bad = work / "dist" / "tampered.dockyard"
-        bad.write_bytes(bytes(data))
+        log.append(f"# tampered copy: one byte changed inside {tamper_payload(archive, bad)}")
         sh([*dockyard, "install", str(bad), "--dir", str(work / "install2")], log, check=False)
+        if "checksum mismatch" not in "\n".join(log[-3:]) or log[-1] != "[exit 2]":
+            raise SystemExit("\n".join(log) + "\nthe tampered bundle was not refused for checksums")
         images = sh(["docker", "images", "-q", IMAGE], log).strip()
         log.append(f"# image present after refused install: {'yes' if images else 'no'}")
         sh([*dockyard, "verify", str(archive), "--digest", "0" * 64], log, check=False)

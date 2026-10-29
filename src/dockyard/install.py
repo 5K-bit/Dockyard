@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -67,8 +69,8 @@ def installed_manifest(target: Path) -> Manifest:
     return parse_manifest(path.read_text(encoding="utf-8"))
 
 
-def _prepare_target(target: Path, manifest: Manifest, upgrade: bool) -> bool:
-    """Return True if the directory was created by this install."""
+def _prepare_target(target: Path, manifest: Manifest, upgrade: bool, *, create: bool) -> bool:
+    """Check the install directory; with ``create``, make it. True if this call created it."""
     if target.exists():
         if not target.is_dir():
             raise DockyardError(f"{target} exists and is not a directory")
@@ -86,6 +88,8 @@ def _prepare_target(target: Path, manifest: Manifest, upgrade: bool) -> bool:
                     f"{manifest.app_name} {record.get('version')} is already installed here; "
                     "use --upgrade to replace it"
                 )
+        return False
+    if not create:
         return False
     target.mkdir(parents=True)
     return True
@@ -114,12 +118,13 @@ def install(
                     f"{os_name}/{arch}. Pack the bundle on a matching platform."
                 )
         target = options.target.resolve()
-        created = _prepare_target(target, manifest, options.upgrade)
+        _check_destination(target, manifest)
+        _prepare_target(target, manifest, options.upgrade, create=False)
         project = options.project or manifest.app_name
-        try:
-            _place_files(bundle.root, target, manifest)
-            compose = target / COMPOSE_FILE
-            risks = audit_compose(docker.compose_config(compose))
+        with tempfile.TemporaryDirectory(prefix="dockyard-stage-") as stage_dir:
+            stage = Path(stage_dir)
+            _place_files(bundle.root, stage, manifest)
+            risks = audit_compose(docker.compose_config(stage / COMPOSE_FILE))
             blocking = [r for r in risks if r.level == HIGH]
             for risk in risks:
                 progress(f"{risk.level}: {risk.service}: {risk.message}")
@@ -137,11 +142,16 @@ def install(
                     raise DockyardError(
                         f"after loading, {image.ref} is {found}, expected {image.image_id}"
                     )
-        except BaseException:
-            if created:
-                shutil.rmtree(target, ignore_errors=True)
-            raise
-        _write_record(target, manifest, project, bundle.archive_digest)
+            # Everything checked out: only now touch the install directory.
+            created = _prepare_target(target, manifest, options.upgrade, create=True)
+            try:
+                _commit_files(stage, target, manifest)
+                _write_record(target, manifest, project, bundle.archive_digest)
+            except BaseException:
+                if created:
+                    shutil.rmtree(target, ignore_errors=True)
+                raise
+        compose = target / COMPOSE_FILE
         checks: list[CheckResult] = []
         if options.start:
             progress("starting")
@@ -152,14 +162,60 @@ def install(
     return InstallResult(manifest, project, target, risks, checks)
 
 
-def _place_files(root: Path, target: Path, manifest: Manifest) -> None:
-    shutil.copyfile(root / COMPOSE_FILE, target / COMPOSE_FILE)
-    shutil.copyfile(root / MANIFEST_FILE, target / MANIFEST_FILE)
-    for extra in manifest.extra_files:
-        rel = extra.path.removeprefix("files/")
-        dest = target / rel
+def _relative_files(manifest: Manifest) -> list[str]:
+    extras = [e.path.removeprefix("files/") for e in manifest.extra_files]
+    return [COMPOSE_FILE, MANIFEST_FILE, *extras]
+
+
+def _check_destination(target: Path, manifest: Manifest) -> None:
+    """Refuse symlinks (or non-files) where this install would write, and reserved names."""
+    rels = _relative_files(manifest)
+    for rel in rels:
+        if Path(rel).parts[0] == RECORD_DIR:
+            raise DockyardError(f"bundle file {rel!r} would overwrite Dockyard's install record")
+    for rel in [*rels, f"{RECORD_DIR}/{RECORD_FILE}"]:
+        current = target
+        for part in Path(rel).parts:
+            current = current / part
+            if current.is_symlink():
+                raise DockyardError(
+                    f"{current} is a symbolic link; refusing to install through it. "
+                    "Remove it or choose another --dir."
+                )
+        if current.exists() and not current.is_file():
+            raise DockyardError(f"{current} exists and is not a regular file")
+
+
+def _place_files(root: Path, dest_root: Path, manifest: Manifest) -> None:
+    """Copy the bundle's installable files into a fresh directory (the staging area)."""
+    sources = {COMPOSE_FILE: COMPOSE_FILE, MANIFEST_FILE: MANIFEST_FILE}
+    sources.update({e.path.removeprefix("files/"): e.path for e in manifest.extra_files})
+    for rel, src in sources.items():
+        dest = dest_root / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root / extra.path, dest)
+        shutil.copyfile(root / src, dest)
+
+
+def _commit_files(stage: Path, target: Path, manifest: Manifest) -> None:
+    """Copy staged files into the install directory, replacing each one atomically."""
+    pending: list[tuple[Path, Path]] = []
+    try:
+        for rel in _relative_files(manifest):
+            _check_destination(target, manifest)
+            dest = target / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            _check_destination(target, manifest)
+            fd, tmp_name = tempfile.mkstemp(dir=dest.parent, prefix=".dockyard-new-")
+            os.close(fd)
+            tmp = Path(tmp_name)
+            pending.append((tmp, dest))
+            shutil.copyfile(stage / rel, tmp)
+        for tmp, dest in pending:
+            os.replace(tmp, dest)
+        pending.clear()
+    finally:
+        for tmp, _ in pending:
+            tmp.unlink(missing_ok=True)
 
 
 def _write_record(
@@ -176,9 +232,12 @@ def _write_record(
     }
     path = _record_path(target)
     path.parent.mkdir(exist_ok=True)
-    path.write_text(
+    tmp = path.with_name(path.name + ".new")
+    tmp.unlink(missing_ok=True)
+    tmp.write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )
+    os.replace(tmp, path)
 
 
 def _health(

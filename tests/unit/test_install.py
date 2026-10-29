@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,12 +11,15 @@ from dockyard.bundle import PackResult
 from dockyard.errors import DockyardError, HealthError, VerificationError
 from dockyard.install import (
     InstallOptions,
+    _check_destination,
     check_health,
     install,
+    installed_manifest,
     read_record,
     status,
     uninstall,
 )
+from dockyard.manifest import FileEntry
 
 from ..fakes import FakeDocker
 
@@ -222,3 +227,95 @@ def test_commands_on_a_directory_that_is_not_an_install(tmp_path: Path, fake: Fa
     (tmp_path / "x" / ".dockyard" / "install.json").write_text("{")
     with pytest.raises(DockyardError, match="not valid JSON"):
         read_record(tmp_path / "x")
+
+
+# -- symlinks and staging -------------------------------------------------------------
+
+
+def _installed(bundle: PackResult, tmp_path: Path, fake: FakeDocker) -> Path:
+    install(bundle.archive, fake.docker(), opts(tmp_path, skip_health=True))
+    return tmp_path / "app"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+@pytest.mark.parametrize("name", ["compose.yaml", "manifest.json", "app.env"])
+def test_upgrade_refuses_a_symlinked_destination_file(
+    bundle: PackResult, tmp_path: Path, target_machine: FakeDocker, name: str
+) -> None:
+    target = _installed(bundle, tmp_path, target_machine)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("precious")
+    (target / name).unlink()
+    (target / name).symlink_to(outside)
+    before = (target / ".dockyard" / "install.json").read_text()
+    with pytest.raises(DockyardError, match="symbolic link"):
+        install(
+            bundle.archive,
+            target_machine.docker(),
+            opts(tmp_path, skip_health=True, upgrade=True),
+        )
+    assert outside.read_text() == "precious" and (target / name).is_symlink()
+    assert (target / ".dockyard" / "install.json").read_text() == before
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_upgrade_refuses_a_symlinked_record_directory_and_record(
+    bundle: PackResult, tmp_path: Path, target_machine: FakeDocker
+) -> None:
+    target = _installed(bundle, tmp_path, target_machine)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    record = target / ".dockyard" / "install.json"
+    record.unlink()
+    (outside / "install.json").write_text("{}")
+    record.symlink_to(outside / "install.json")
+    with pytest.raises(DockyardError, match="symbolic link"):
+        install(bundle.archive, target_machine.docker(), opts(tmp_path, upgrade=True))
+    assert (outside / "install.json").read_text() == "{}"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_symlinked_parent_directory_is_refused(
+    bundle: PackResult, tmp_path: Path, target_machine: FakeDocker
+) -> None:
+    target = _installed(bundle, tmp_path, target_machine)
+    manifest = installed_manifest(target)
+    nested = replace(manifest, extra_files=[FileEntry("files/sub/x.env", "0" * 64)])
+    outside = tmp_path / "outside-dir"
+    outside.mkdir()
+    (target / "sub").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(DockyardError, match="symbolic link"):
+        _check_destination(target, nested)
+
+
+def test_a_rejected_upgrade_leaves_the_existing_install_untouched(
+    bundle: PackResult, tmp_path: Path, target_machine: FakeDocker
+) -> None:
+    target = _installed(bundle, tmp_path, target_machine)
+    snapshot = {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    (target / "compose.yaml").write_text("# edited by the operator\n")
+    snapshot[target / "compose.yaml"] = b"# edited by the operator\n"
+    (target / "app.env").write_text("GREETING=mine\n")
+    snapshot[target / "app.env"] = b"GREETING=mine\n"
+
+    target_machine.compose = {"services": {"web": {"image": "acme/web:1.0", "privileged": True}}}
+    with pytest.raises(DockyardError, match="--accept-risks"):
+        install(bundle.archive, target_machine.docker(), opts(tmp_path, upgrade=True))
+
+    target_machine.compose = {"services": {"web": {"image": "acme/web:1.0"}}}
+    target_machine.load_gives_wrong_id = True
+    target_machine.images.clear()
+    with pytest.raises(DockyardError, match="expected sha256:"):
+        install(bundle.archive, target_machine.docker(), opts(tmp_path, upgrade=True))
+
+    after = {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    assert after == snapshot  # no changed files, no leftover temporary files
+
+
+def test_bundle_files_cannot_overwrite_the_install_record(
+    bundle: PackResult, tmp_path: Path, target_machine: FakeDocker
+) -> None:
+    manifest = installed_manifest(_installed(bundle, tmp_path, target_machine))
+    evil = replace(manifest, extra_files=[FileEntry("files/.dockyard/install.json", "0" * 64)])
+    with pytest.raises(DockyardError, match="install record"):
+        _check_destination(tmp_path, evil)

@@ -74,11 +74,15 @@ dockyard pack --out dist           # prints the archive SHA-256
 Copy `dist/<name>-<version>.dockyard` (and note the SHA-256) to the target by any route you like. On the machine **without internet**, with only Python and Docker:
 
 ```bash
+# 1. Check the archive with a system tool BEFORE unpacking or running anything from it
+echo "<sha256 you were given>  myapp-1.0.0.dockyard" | sha256sum -c -    # macOS: shasum -a 256 -c -
+# 2. Only if that printed "OK":
 tar -xzf myapp-1.0.0.dockyard
-python myapp-1.0.0/dockyard.pyz verify myapp-1.0.0.dockyard --digest <sha256 you were given>
 python myapp-1.0.0/dockyard.pyz install myapp-1.0.0.dockyard --dir /opt/myapp --digest <sha256>
 python myapp-1.0.0/dockyard.pyz status --dir /opt/myapp
 ```
+
+The bundled `dockyard.pyz` is code from the bundle, so it must not be what checks the bundle: the first step uses `sha256sum`, which is already on the machine. `install --digest` repeats the check and records it.
 
 A `dockyard.toml` looks like this:
 

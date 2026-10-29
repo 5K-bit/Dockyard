@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Quick start and `INSTALL.txt` verify the archive's independently supplied digest with `sha256sum` before anything is extracted or run; the bundled installer is no longer used to vouch for itself.
+- `install` refuses symbolic links at destination files and parent directories (including the install record), and bundle files that would overwrite `.dockyard/`.
+- `install` stages and validates (risk audit, image load and ID check) before touching the target; a rejected upgrade leaves the existing installation unchanged. Files are replaced atomically.
+
+### Fixed
+
+- The real-Docker acceptance corruption fixture now preserves the archive structure and changes one image byte, so it exercises the checksum check rather than failing with a missing manifest.
+
+### Changed
+
+- The release workflow now requires the full CI workflow to pass and installs and smoke-tests the built wheel and sdist before publishing.
+
 ## [0.1.0] - 2026-10-29
 
 First working version.
