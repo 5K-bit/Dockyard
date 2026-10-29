@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.venv/
+.env
+
+# Bundles hold application images: never commit them
+*.dockyard
+*.dockyard.sha256
+/dist-bundles/
