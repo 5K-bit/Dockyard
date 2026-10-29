@@ -1,0 +1,17 @@
+[app]
+name = "demo"
+version = "1.0.0"
+compose = "compose.yaml"
+
+[[health]]
+name = "api"
+kind = "http"
+url = "http://127.0.0.1:18080/health"
+expect_status = 200
+expect_body = "ok"
+timeout = 30
+
+[[health]]
+name = "api-container"
+kind = "container"
+service = "api"
