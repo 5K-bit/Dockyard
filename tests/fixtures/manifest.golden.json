@@ -1,0 +1,41 @@
+{
+  "app": {
+    "name": "demo",
+    "version": "1.2.3"
+  },
+  "compose": {
+    "file": "compose.yaml",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "created": "2026-10-29T19:00:00Z",
+  "dockyard_version": "0.1.0",
+  "extra_files": [
+    {
+      "path": "files/app.env",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "health": [
+    {
+      "kind": "http",
+      "name": "web",
+      "timeout": 30.0,
+      "url": "http://127.0.0.1:8080/health"
+    }
+  ],
+  "images": [
+    {
+      "arch": "amd64",
+      "file": "images/acme_web_1.0.tar",
+      "image_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "os": "linux",
+      "ref": "acme/web:1.0",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 10
+    }
+  ],
+  "schema": 1,
+  "warnings": [
+    "medium: web: publishes port 8080 on all interfaces"
+  ]
+}
