@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import gzip
 import hashlib
-import io
 import re
 import shutil
 import tarfile
@@ -53,6 +52,8 @@ from .risks import audit_compose
 
 CHUNK = 1024 * 1024
 MAX_FILES = 10_000
+MAX_MANIFEST_BYTES = 4 * 1024**2  # 10,000 entries of a few hundred bytes each
+MAX_CHECKSUM_BYTES = 4 * 1024**2
 DEFAULT_MAX_BYTES = 200 * 1024**3
 _SUM_LINE = re.compile(r"^([0-9a-f]{64})  (.+)$")
 
@@ -294,22 +295,32 @@ def safe_extract(archive: Path, dest: Path, *, max_bytes: int = DEFAULT_MAX_BYTE
                 )
             if member.isfile():
                 total += member.size
+        files = {m.name.rstrip("/") for m in members if m.isfile()}
+        for name in sorted(seen):
+            parts = name.split("/")
+            for depth in range(1, len(parts)):
+                inside = "/".join(parts[:depth])
+                if inside in files:
+                    raise VerificationError(f"bundle lists {name!r} inside {inside!r}, a file")
         if len(roots) != 1:
             raise VerificationError("bundle must contain exactly one top-level directory")
         if total > max_bytes:
             raise VerificationError(f"bundle expands to more than {max_bytes // 1024**3} GiB")
         root = dest / next(iter(roots))
-        for member in members:
-            target = dest / member.name
-            if member.isdir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            source = tar.extractfile(member)
-            if source is None:
-                raise VerificationError(f"cannot read {member.name!r} from the archive")
-            with source, target.open("wb") as out:
-                shutil.copyfileobj(source, out, CHUNK)
+        try:
+            for member in members:
+                target = dest / member.name
+                if member.isdir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = tar.extractfile(member)
+                if source is None:
+                    raise VerificationError(f"cannot read {member.name!r} from the archive")
+                with source, target.open("wb") as out:
+                    shutil.copyfileobj(source, out, CHUNK)
+        except (OSError, tarfile.TarError, EOFError) as exc:
+            raise VerificationError(f"could not unpack {archive.name}: {exc}") from exc
     return root
 
 
@@ -345,14 +356,24 @@ class Verified:
     bytes: int
 
 
+def _read_text(path: Path, limit: int) -> str:
+    """Read a small control file, refusing one that is oversized or not UTF-8."""
+    if path.stat().st_size > limit:
+        raise VerificationError(f"{path.name} is larger than {limit // 1024**2} MiB")
+    try:
+        return path.read_text(encoding="utf-8", errors="strict")
+    except UnicodeDecodeError:
+        raise VerificationError(f"{path.name} is not valid UTF-8") from None
+
+
 def verify_dir(root: Path) -> Verified:
     """Check a bundle directory against its manifest and checksum file."""
     manifest_path, sums_path = root / MANIFEST_FILE, root / CHECKSUM_FILE
     for required in (manifest_path, sums_path):
         if not required.is_file():
             raise VerificationError(f"bundle is missing {required.name}")
-    manifest = parse_manifest(manifest_path.read_text(encoding="utf-8", errors="strict"))
-    sums = parse_checksums(sums_path.read_text(encoding="utf-8", errors="strict"))
+    manifest = parse_manifest(_read_text(manifest_path, MAX_MANIFEST_BYTES))
+    sums = parse_checksums(_read_text(sums_path, MAX_CHECKSUM_BYTES))
     actual = {p.relative_to(root).as_posix(): p for p in _walk_plain_files(root)}
     actual.pop(CHECKSUM_FILE, None)
     missing = sorted(set(sums) - set(actual))
@@ -446,14 +467,27 @@ def sidecar_digest(archive: Path) -> str | None:
 
 def read_manifest_only(archive: Path) -> Manifest:
     """Read the manifest from an archive without extracting it (for quick listings)."""
-    with tarfile.open(archive, mode="r:*") as tar:
-        for member in tar:
-            if (
-                member.isfile()
-                and member.name.count("/") == 1
-                and member.name.endswith("/" + MANIFEST_FILE)
-            ):
-                handle = tar.extractfile(member)
-                if handle is not None:
-                    return parse_manifest(io.TextIOWrapper(handle, encoding="utf-8").read())
+    try:
+        with tarfile.open(archive, mode="r:*") as tar:
+            for count, member in enumerate(tar, 1):
+                if count > MAX_FILES + 1:
+                    break
+                if (
+                    member.isfile()
+                    and member.name.count("/") == 1
+                    and member.name.endswith("/" + MANIFEST_FILE)
+                ):
+                    if member.size > MAX_MANIFEST_BYTES:
+                        raise VerificationError(
+                            f"{MANIFEST_FILE} is larger than {MAX_MANIFEST_BYTES // 1024**2} MiB"
+                        )
+                    handle = tar.extractfile(member)
+                    if handle is not None:
+                        try:
+                            text = handle.read(MAX_MANIFEST_BYTES + 1).decode("utf-8")
+                        except UnicodeDecodeError:
+                            raise VerificationError(f"{MANIFEST_FILE} is not valid UTF-8") from None
+                        return parse_manifest(text)
+    except (tarfile.TarError, OSError, EOFError) as exc:
+        raise VerificationError(f"{archive.name} is not a readable bundle archive: {exc}") from exc
     raise VerificationError("no manifest.json in the archive")
