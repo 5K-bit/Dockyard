@@ -47,7 +47,14 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev]"
       - name: Tests that need a daemon
-        run: python -m pytest -m docker -o addopts="" -v
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -m docker -o addopts="" -v 2>&1 | tee pytest.log || {
+            # Surface the end of the log as an annotation, readable without signing in.
+            echo "::error title=docker tests failed::$(tail -c 3500 pytest.log | tr -d '\r' | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            exit 1
+          }
       - name: Acceptance scenario
         run: python examples/acceptance.py --out /tmp/evidence
 
