@@ -25,6 +25,7 @@ import shutil
 import tarfile
 import tempfile
 import time
+import zlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -264,12 +265,12 @@ def safe_extract(archive: Path, dest: Path, *, max_bytes: int = DEFAULT_MAX_BYTE
     """
     try:
         tar = tarfile.open(archive, mode="r:*")  # noqa: SIM115 - closed below
-    except (tarfile.TarError, OSError, EOFError) as exc:
+    except (tarfile.TarError, OSError, EOFError, zlib.error) as exc:
         raise VerificationError(f"{archive.name} is not a readable bundle archive: {exc}") from exc
     with tar:
         try:
             members = tar.getmembers()
-        except (tarfile.TarError, OSError, EOFError) as exc:
+        except (tarfile.TarError, OSError, EOFError, zlib.error) as exc:
             raise VerificationError(f"{archive.name} is truncated or corrupt: {exc}") from exc
         if len(members) > MAX_FILES:
             raise VerificationError(f"bundle has more than {MAX_FILES} entries")
@@ -319,7 +320,12 @@ def safe_extract(archive: Path, dest: Path, *, max_bytes: int = DEFAULT_MAX_BYTE
                     raise VerificationError(f"cannot read {member.name!r} from the archive")
                 with source, target.open("wb") as out:
                     shutil.copyfileobj(source, out, CHUNK)
-        except (OSError, tarfile.TarError, EOFError) as exc:
+            # tarfile stops quietly at a damaged header and gzip only checks its CRC at the end
+            # of the stream, so read what is left: corruption must fail here, by name, rather
+            # than surface later as a bundle that is mysteriously missing files.
+            while tar.fileobj.read(CHUNK):
+                pass
+        except (OSError, tarfile.TarError, EOFError, zlib.error) as exc:
             raise VerificationError(f"could not unpack {archive.name}: {exc}") from exc
     return root
 
@@ -488,6 +494,6 @@ def read_manifest_only(archive: Path) -> Manifest:
                         except UnicodeDecodeError:
                             raise VerificationError(f"{MANIFEST_FILE} is not valid UTF-8") from None
                         return parse_manifest(text)
-    except (tarfile.TarError, OSError, EOFError) as exc:
+    except (tarfile.TarError, OSError, EOFError, zlib.error) as exc:
         raise VerificationError(f"{archive.name} is not a readable bundle archive: {exc}") from exc
     raise VerificationError("no manifest.json in the archive")

@@ -70,7 +70,11 @@ def test_the_bundled_installer_installs_and_the_app_answers(transcript: str) -> 
 
 
 def test_a_corrupted_bundle_is_refused_and_loads_nothing(transcript: str) -> None:
-    assert "verification failed: checksum mismatch" in transcript
+    # Where the flipped byte lands decides the wording (a failed CRC, a bad header, a checksum
+    # mismatch); what matters is that the install is refused with exit 2 and nothing is loaded.
+    refused = transcript.split("tampered.dockyard", 1)[1].split("$ docker images", 1)[0]
+    assert "dockyard: verification failed:" in refused
+    assert "[exit 2]" in refused
     assert "# image present after refused install: no" in transcript
 
 

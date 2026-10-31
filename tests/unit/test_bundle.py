@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import random
 import tarfile
 from pathlib import Path
 
@@ -383,3 +384,26 @@ def test_a_write_failure_while_unpacking_is_a_verification_error(
     monkeypatch.setattr(bundle_mod.shutil, "copyfileobj", full_disk)
     with pytest.raises(VerificationError, match="could not unpack"):
         safe_extract(bundle.archive, tmp_path / "d")
+
+
+@pytest.mark.parametrize("offset", range(0, 60, 7))
+def test_a_damaged_archive_is_refused_wherever_the_damage_is(tmp_path: Path, offset: int) -> None:
+    """tarfile ends quietly at a damaged header and gzip checks its CRC only at the end, so a
+    flipped byte used to unpack a truncated bundle and fail later as 'missing files'."""
+    rng = random.Random(offset)  # noqa: S311 - reproducible test data, not security
+    words = [rng.randbytes(6).hex() for _ in range(2000)]
+    payload = " ".join(rng.choice(words) for _ in range(150_000)).encode()
+    good = make_tar(
+        tmp_path / "good.tar.gz",
+        [
+            ("app", None, b"dir"),
+            ("app/image.tar", payload, b"file"),
+            ("app/manifest.json", b"{}", b"file"),
+        ],
+    )
+    data = bytearray(good.read_bytes())
+    data[len(data) // 2 + offset * 101] ^= 0xFF
+    bad = tmp_path / "bad.tar.gz"
+    bad.write_bytes(bytes(data))
+    with pytest.raises(VerificationError):
+        bundle_mod.safe_extract(bad, tmp_path / "out")
