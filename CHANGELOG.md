@@ -6,13 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-
-- A crafted bundle archive listing a file and an entry beneath it crashed the unpacker with a raw `FileExistsError`. Structural conflicts are now refused during validation, and a write failure while unpacking (for example a full disk) is reported as a verification error.
-- `manifest.json` and `SHA256SUMS` are read with a 4 MiB cap and must be valid UTF-8, in both the verifier and the quick-listing reader (which also stops scanning after the entry limit).
-- A bundle damaged in transit could be reported as missing files. Python's tar reader stops quietly at a damaged header and gzip checks its CRC only at the end of the stream, so most single-byte corruptions (33 of 40 in a trial) unpacked a truncated bundle and failed later with a misleading message. Unpacking now reads the archive to its end, so any corruption is refused during unpacking with the cause named. Nothing was ever loaded in either case.
-
-## [0.1.0] - 2026-10-29
+## [0.1.0] - 2026-10-31
 
 First working version.
 
@@ -24,3 +18,9 @@ First working version.
 - Health checks: http, tcp, container and (opt-in) command.
 - `dockyard health`, `status`, `uninstall [--remove-images --volumes]`, `init`.
 - Exit codes: 0 ok, 1 error, 2 verification failure, 3 health failure.
+
+### Fixed
+
+- A crafted bundle archive listing a file and an entry beneath it crashed the unpacker with a raw `FileExistsError`. Structural conflicts are now refused during validation, and a write failure while unpacking (for example a full disk) is reported as a verification error.
+- `manifest.json` and `SHA256SUMS` are read with a 4 MiB cap and must be valid UTF-8, in both the verifier and the quick-listing reader (which also stops scanning after the entry limit).
+- A bundle damaged in transit could be reported as missing files. Python's tar reader stops quietly at a damaged header and gzip checks its CRC only at the end of the stream, so most single-byte corruptions (33 of 40 in a trial) unpacked a truncated bundle and failed later with a misleading message. Unpacking now reads the archive to its end, so any corruption is refused during unpacking with the cause named. Nothing was ever loaded in either case.

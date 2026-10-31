@@ -162,7 +162,7 @@ Dockyard does not claim more than it has shown:
 ## Roadmap
 
 - [x] Pack, verify, install, health-check one Compose application offline
-- [ ] Run on GitHub CI (Linux and Windows) and confirm the matrix and the real-Docker job are green
+- [x] Run on GitHub CI (Linux and Windows): the matrix and the real-Docker job are green on `main` (checked 2026-10-31)
 - [ ] Sign bundles with a key you hold
 - [ ] Multi-architecture bundles
 - [ ] Differential bundles for upgrades
