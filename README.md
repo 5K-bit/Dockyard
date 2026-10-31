@@ -49,7 +49,7 @@ A corrupted copy is refused before anything is loaded, and so is a bundle whose 
 
 ```text
 $ dockyard install tampered.dockyard --dir install2
-dockyard: verification failed: checksum mismatch: images/dockyard-demo_api_1.0.tar
+dockyard: verification failed: could not unpack tampered.dockyard: CRC check failed 0x... (the exact wording depends on where the damage is)
 [exit 2]
 $ docker images -q dockyard-demo/api:1.0
 (nothing: no image was loaded)

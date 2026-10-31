@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import random
 import tarfile
 from pathlib import Path
 
@@ -251,6 +252,8 @@ def make_tar(path: Path, members: list[tuple[str, bytes | None, bytes]]) -> Path
         ([("a", None, b"dir"), ("b", None, b"dir")], "exactly one top-level"),
         ([("loose.txt", b"x", b"file")], "file at the top level"),
         ([(".hidden/x", b"x", b"file")], "unsafe"),
+        ([("b/a", b"x", b"file"), ("b/a/c", b"y", b"file")], "inside 'b/a', a file"),
+        ([("b/a/c", b"y", b"file"), ("b/a", b"x", b"file")], "inside 'b/a', a file"),
         ([], "exactly one top-level"),
     ],
 )
@@ -339,3 +342,68 @@ def test_the_bundled_installer_is_a_runnable_zipapp(root: Path) -> None:
         check=True,
     )
     assert out.stdout.startswith("dockyard ")
+
+
+def test_control_files_are_size_capped_and_must_be_utf8(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bundle_mod, "MAX_MANIFEST_BYTES", 10)
+    with pytest.raises(VerificationError, match="manifest.json is larger than"):
+        verify_dir(root)
+    monkeypatch.undo()
+    monkeypatch.setattr(bundle_mod, "MAX_CHECKSUM_BYTES", 10)
+    with pytest.raises(VerificationError, match="SHA256SUMS is larger than"):
+        verify_dir(root)
+    monkeypatch.undo()
+    (root / "SHA256SUMS").write_bytes(b"\xff\xfe not utf-8")
+    with pytest.raises(VerificationError, match="not valid UTF-8"):
+        verify_dir(root)
+
+
+def test_manifest_only_reader_is_capped_and_strict(
+    tmp_path: Path, bundle: PackResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert read_manifest_only(bundle.archive).app_name == "demo"
+    monkeypatch.setattr(bundle_mod, "MAX_MANIFEST_BYTES", 10)
+    with pytest.raises(VerificationError, match="larger than"):
+        read_manifest_only(bundle.archive)
+    monkeypatch.undo()
+    bad = make_tar(tmp_path / "bad.dockyard", [("b/manifest.json", b"\xff\xfe", b"file")])
+    with pytest.raises(VerificationError, match="not valid UTF-8"):
+        read_manifest_only(bad)
+    with pytest.raises(VerificationError, match="not a readable bundle"):
+        read_manifest_only(tmp_path / "missing.dockyard")
+
+
+def test_a_write_failure_while_unpacking_is_a_verification_error(
+    tmp_path: Path, bundle: PackResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def full_disk(*_args: object, **_kwargs: object) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(bundle_mod.shutil, "copyfileobj", full_disk)
+    with pytest.raises(VerificationError, match="could not unpack"):
+        safe_extract(bundle.archive, tmp_path / "d")
+
+
+@pytest.mark.parametrize("offset", range(0, 60, 7))
+def test_a_damaged_archive_is_refused_wherever_the_damage_is(tmp_path: Path, offset: int) -> None:
+    """tarfile ends quietly at a damaged header and gzip checks its CRC only at the end, so a
+    flipped byte used to unpack a truncated bundle and fail later as 'missing files'."""
+    rng = random.Random(offset)  # noqa: S311 - reproducible test data, not security
+    words = [rng.randbytes(6).hex() for _ in range(2000)]
+    payload = " ".join(rng.choice(words) for _ in range(150_000)).encode()
+    good = make_tar(
+        tmp_path / "good.tar.gz",
+        [
+            ("app", None, b"dir"),
+            ("app/image.tar", payload, b"file"),
+            ("app/manifest.json", b"{}", b"file"),
+        ],
+    )
+    data = bytearray(good.read_bytes())
+    data[len(data) // 2 + offset * 101] ^= 0xFF
+    bad = tmp_path / "bad.tar.gz"
+    bad.write_bytes(bytes(data))
+    with pytest.raises(VerificationError):
+        bundle_mod.safe_extract(bad, tmp_path / "out")
