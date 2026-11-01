@@ -29,7 +29,7 @@ def sample() -> Manifest:
         app_name="demo",
         app_version="1.2.3",
         created="2026-10-29T19:00:00Z",
-        dockyard_version="0.1.0",
+        dockyard_version="0.1.1",
         compose=FileEntry("compose.yaml", H),
         images=[ImageEntry("acme/web:1.0", "images/acme_web_1.0.tar", H, 10, ID, "linux", "amd64")],
         extra_files=[FileEntry("files/app.env", H)],

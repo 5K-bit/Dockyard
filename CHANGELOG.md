@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-01
+
 ### Security
 
 - Quick start and `INSTALL.txt` verify the archive's independently supplied digest with `sha256sum` before anything is extracted or run; the bundled installer is no longer used to vouch for itself.
@@ -14,6 +16,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A corrupted or truncated bundle is now always refused with a verification error (exit 2) before anything is loaded; previously a damaged archive could be misreported.
 - The real-Docker acceptance corruption fixture now preserves the archive structure and changes one image byte, so it exercises the checksum check rather than failing with a missing manifest.
 
 ### Changed

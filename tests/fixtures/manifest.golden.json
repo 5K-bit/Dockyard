@@ -8,7 +8,7 @@
     "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "created": "2026-10-29T19:00:00Z",
-  "dockyard_version": "0.1.0",
+  "dockyard_version": "0.1.1",
   "extra_files": [
     {
       "path": "files/app.env",
