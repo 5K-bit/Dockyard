@@ -44,7 +44,13 @@ jobs:
           "$RUNNER_TEMP/venv/bin/pip" install dist/*.whl
           cd "$RUNNER_TEMP"
           ./venv/bin/dockyard --help
+          ./venv/bin/dockyard --version | tee /dev/stderr | grep -F "${GITHUB_REF_NAME#v}"
+          ./venv/bin/python -m dockyard --version
           ./venv/bin/python -c "import dockyard, pathlib; assert 'site-packages' in pathlib.Path(dockyard.__file__).parts"
+          # The self-contained installer shipped inside bundles must build and run from the wheel.
+          ./venv/bin/python -c "import dockyard.pyz as z, pathlib; z.build_pyz(pathlib.Path('dockyard.pyz'))"
+          ./venv/bin/python dockyard.pyz --version
+          ./venv/bin/dockyard init --dir "$(mktemp -d)"
       - name: Run the test suite against the installed wheel
         run: |
           "$RUNNER_TEMP/venv/bin/pip" install pytest
@@ -61,6 +67,7 @@ jobs:
         with:
           name: dist
           path: dist/*
+          if-no-files-found: error
 
   publish:
     needs: build

@@ -50,10 +50,11 @@ Everything above `docker.py` is testable with `tests/fakes.py::FakeDocker`. A se
 1. **Verify.** Extract safely, check `SHA256SUMS`, and compare the archive digest when `--digest` is given. Nothing touches Docker if this fails (exit 2).
 2. **Ready check.** The daemon answers and the Compose plugin exists.
 3. **Platform.** Each image's OS and architecture must match the daemon's.
-4. **Target directory.** Empty or new. A directory that already holds an install of the same app needs `--upgrade`.
-5. **Place files**, then **audit the Compose file** with `docker compose config`. High-risk settings stop the install unless `--accept-risks`.
+4. **Target directory.** Empty or new. A directory that already holds an install of the same app needs `--upgrade`. Symbolic links at any destination file or parent directory are refused, and nothing is created yet.
+5. **Stage and audit.** Compose and extra files are copied to a temporary staging directory and the staged Compose file is audited with `docker compose config`. High-risk settings stop the install unless `--accept-risks`.
 6. **Load images** and compare each loaded image ID with the manifest.
-7. **Record** the install, **start** with `compose up --detach --no-build --pull never`, then run **health checks**. Failing checks exit 3 and leave the app installed so you can inspect it.
+7. **Commit.** Only after every check above passes are the staged files copied into the target (each replaced atomically, symlinks re-checked) and the install record written. A rejected install or upgrade leaves the existing directory exactly as it was; a directory created by the attempt is removed. (Docker images that were already loaded stay loaded.)
+8. **Start** with `compose up --detach --no-build --pull never`, then run **health checks**. Failing checks exit 3 and leave the app installed so you can inspect it.
 
 ## Exit codes
 

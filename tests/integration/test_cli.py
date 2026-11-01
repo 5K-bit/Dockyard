@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from dockyard.bundle import PackResult
+from dockyard.bundle import PackResult, open_bundle
 from dockyard.cli import main
 from dockyard.config import CONFIG_NAME
+from dockyard.errors import VerificationError
 
 from ..fakes import FakeDocker
 
@@ -147,3 +148,24 @@ def test_no_docker_binary_is_a_clean_error(
         docker=Docker(binary="/no/such/docker"),
     )
     assert code == 1 and "not installed or not on PATH" in capsys.readouterr().err
+
+
+def test_acceptance_tamper_fixture_fails_only_the_checksum(
+    bundle: PackResult, tmp_path: Path, fake: FakeDocker
+) -> None:
+    """The real-Docker job's corrupted copy must keep the archive structure intact."""
+    import importlib.util
+    import tarfile
+
+    spec = importlib.util.spec_from_file_location(
+        "acceptance", Path(__file__).resolve().parents[2] / "examples" / "acceptance.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    bad = tmp_path / "tampered.dockyard"
+    altered = module.tamper_payload(bundle.archive, bad)
+    with tarfile.open(bundle.archive) as a, tarfile.open(bad) as b:
+        assert [(m.name, m.size, m.type) for m in a] == [(m.name, m.size, m.type) for m in b]
+    with pytest.raises(VerificationError, match=f"checksum mismatch: {altered.split('/', 1)[1]}"):
+        open_bundle(bad)

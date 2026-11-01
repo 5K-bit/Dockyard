@@ -64,9 +64,11 @@ INSTALL_TXT = """\
 Install this bundle on a machine with Docker, Docker Compose and Python 3.11+.
 No internet access is needed.
 
-1. Check the bundle (optional but recommended). Compare the digest with the one you were
-   given separately:
-       sha256sum {archive}
+1. Check the archive against the digest you were given by a different route than the file,
+   using a tool already on this machine. Do this BEFORE unpacking or running anything from
+   the bundle (the bundle's own checksums prove nothing about who made it):
+       echo "<digest you were given>  {archive}" | sha256sum -c -
+   (macOS: use "shasum -a 256 -c -".) Stop if it does not print "{archive}: OK".
 2. Unpack it:
        tar xzf {archive}
        cd {root}
