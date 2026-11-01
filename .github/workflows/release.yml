@@ -78,7 +78,7 @@ jobs:
         run: |
           # 0.x versions and any tag with a suffix (v1.0.0-rc1) are prereleases.
           if [[ "${GITHUB_REF_NAME}" == v0.* || "${GITHUB_REF_NAME}" == *-* ]]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body_path: docs/releases/${{ github.ref_name }}.md
