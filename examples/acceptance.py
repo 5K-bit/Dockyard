@@ -168,8 +168,8 @@ def run_scenario() -> str:
         bad = work / "dist" / "tampered.dockyard"
         log.append(f"# tampered copy: one byte changed inside {tamper_payload(archive, bad)}")
         sh([*dockyard, "install", str(bad), "--dir", str(work / "install2")], log, check=False)
-        if "checksum mismatch" not in "\n".join(log[-3:]) or log[-1] != "[exit 2]":
-            raise SystemExit("\n".join(log) + "\nthe tampered bundle was not refused for checksums")
+        if "verification failed" not in "\n".join(log[-3:]) or log[-1] != "[exit 2]":
+            raise SystemExit("\n".join(log) + "\nthe tampered bundle was not refused")
         images = sh(["docker", "images", "-q", IMAGE], log).strip()
         log.append(f"# image present after refused install: {'yes' if images else 'no'}")
         sh([*dockyard, "verify", str(archive), "--digest", "0" * 64], log, check=False)

@@ -83,7 +83,7 @@ def test_the_archive_digest_is_checked_by_a_system_tool_before_it_is_unpacked(
 ) -> None:
     check = transcript.index("sha256sum -c -")
     assert ": OK" in transcript[check:]
-    assert check < transcript.index("python3 -c import dockyard")
+    assert check < transcript.index("-c import dockyard")
 
 
 def test_a_wrong_expected_digest_is_refused(transcript: str) -> None:
