@@ -293,9 +293,9 @@ def test_a_rejected_upgrade_leaves_the_existing_install_untouched(
 ) -> None:
     target = _installed(bundle, tmp_path, target_machine)
     snapshot = {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
-    (target / "compose.yaml").write_text("# edited by the operator\n")
+    (target / "compose.yaml").write_bytes(b"# edited by the operator\n")
     snapshot[target / "compose.yaml"] = b"# edited by the operator\n"
-    (target / "app.env").write_text("GREETING=mine\n")
+    (target / "app.env").write_bytes(b"GREETING=mine\n")
     snapshot[target / "app.env"] = b"GREETING=mine\n"
 
     target_machine.compose = {"services": {"web": {"image": "acme/web:1.0", "privileged": True}}}
