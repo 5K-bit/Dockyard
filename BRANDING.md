@@ -22,3 +22,7 @@ Explain the working product before the roadmap. Keep setup, limits and evidence 
 ## Maintenance
 
 Edit the SVG as text. Keep the name and descriptor inside the left text area (x=48 through x=860); reserve the right area for the symbol. Preserve the viewBox. `assets/social-preview.png` is the banner on a 1280 × 640 canvas, for GitHub's social preview setting.
+
+## Icon
+
+Square app/avatar icon built from the banner symbol and accent: `assets/brand/icon.svg` (256 × 256 source) with `icon-512.png` and `icon-192.png` exports. Use it for GitHub avatars, social tiles, favicons and install icons. Regenerate it from the banner symbol if the symbol or accent changes.

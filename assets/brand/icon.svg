@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">Dockyard icon</title>
+  <rect width="256" height="256" rx="56" fill="#0c1220"/>
+  <rect x="6" y="6" width="244" height="244" rx="50" fill="none" stroke="#3ddc97" stroke-opacity=".35" stroke-width="4"/>
+  <g transform="translate(54.00 52.15) scale(0.6167)" fill="none" stroke="#3ddc97" stroke-width="16.22" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="70" width="200" height="110" rx="10"/><path d="M60 70v110M100 70v110M140 70v110M180 70v110"/><path d="M120 10v44M98 32l22 22 22-22"/><path d="M0 214h240"/><path d="M20 214v22M220 214v22"/></g>
+</svg>
